@@ -59,7 +59,8 @@ browser.tabs.onCreated.addListener(async tab => {
     mTabsOpenedByExternalApplicationsInWindow.set(tab.windowId, tabs);
   }
 
-  const groupTabId = mGroupTabIdInWindow.get(tab.windowId);
+  const groupTabId = mGroupTabIdInWindow.get(tab.windowId) ||
+    await browser.sessions.getWindowValue(tab.windowId, 'groupTabId_byExternalApps');
   if (tab.id == groupTabId)
     return;
 
@@ -78,10 +79,11 @@ browser.tabs.onCreated.addListener(async tab => {
   if (!groupTab) {
     const title = configs.groupTabTitle_byExternalApps || browser.i18n.getMessage('defaultGroupTabTitle_byExternalApps');
     groupTab = await browser.tabs.create({
-      url:    `ext+treestyletab:group?title=${encodeURIComponent(title)}`,
+      url:    `ext+treestyletab:group?title=${encodeURIComponent(title)}&temporary=true`,
       active: false,
     });
     mGroupTabIdInWindow.set(tab.windowId, groupTab.id);
+    browser.sessions.setWindowValue(tab.windowId, 'groupTabId_byExternalApps', groupTab.id);
     tabs.delete(groupTab.id);
   }
 
