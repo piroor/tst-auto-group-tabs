@@ -1,0 +1,4 @@
+{
+  "extensionName": { "message": "TST Auto Group Tabs" },
+  "extensionDescription": { "message": "Tree Style Tabと連携し、新しく開かれたタブを様々な条件でグループ化します。" }
+}
