@@ -11,7 +11,17 @@ import {
 
 const TST_ID = 'treestyletab@piro.sakura.ne.jp';
 
-const stylesForWindow = new Map();
+let mLastFocusedWindowId = browser.windows.WINDOW_ID_NONE;
+
+browser.windows.getAll().then(windows => {
+  for (const window of windows) {
+    if (!window.focused)
+      continue;
+
+    mLastFocusedWindowId = window.id;
+    break;
+  }
+});
 
 async function registerToTST() {
   try {
@@ -39,18 +49,73 @@ browser.runtime.onMessageExternal.addListener((message, sender) => {
   }
 });
 
-browser.tabs.onCreated.addListener(tab => {
-  reserveToUpdateActiveTabMarker(tab.windowId);
+const mTabsOpenedByExternalApplicationsInWindow = new Map();
+const mGroupTabIdInWindow = new Map();
+
+browser.tabs.onCreated.addListener(async tab => {
+  const tabs = mTabsOpenedByExternalApplicationsInWindow.get(tab.windowId) || new Map();
+  if (mLastFocusedWindowId == browser.windows.WINDOW_ID_NONE) {
+    tabs.set(tab.id, tab);
+    mTabsOpenedByExternalApplicationsInWindow.set(tab.windowId, tabs);
+  }
+
+  const groupTabId = mGroupTabIdInWindow.get(tab.windowId);
+  if (tab.id == groupTabId)
+    return;
+
+  let groupTab = groupTabId && await browser.tabs.get(groupTabId).catch(_error => null);
+  if (groupTab && groupTab.windowId != tab.windowId) {
+    mGroupTabIdInWindow.delete(tab.windowId);
+    groupTab = null;
+  }
+
+  if (!groupTab && tabs.size < 2)
+    return;
+
+  const tabsToBeGrouped = Array.from(tabs.values());
+  tabs.clear();
+
+  if (!groupTab) {
+    groupTab = await browser.tabs.create({
+      url:    `ext+treestyletab:group?title=${escape('Tabs from External Application')}`,
+      active: false,
+    });
+    mGroupTabIdInWindow.set(tab.windowId, groupTab.id);
+    tabs.delete(groupTab.id);
+  }
+
+  const lastDescendant = await browser.runtime.sendMessage(TST_ID, {
+    type: 'get-tree',
+    tab:  `lastDescendant-of-${groupTab.id}`,
+  });
+  let lastReferenceTab = lastDescendant || groupTab;
+  for (const tab of tabsToBeGrouped) {
+    await browser.runtime.sendMessage(TST_ID, {
+      type:        'attach',
+      parent:      groupTab.id,
+      child:       tab.id,
+      insertAfter: lastReferenceTab.id, 
+    });
+    lastReferenceTab = tab;
+  }
 });
 
-browser.tabs.onRemoved.addListener((_tabId, removeInfo) => {
-  reserveToUpdateActiveTabMarker(removeInfo.windowId);
+browser.tabs.onRemoved.addListener((tabId, removeInfo) => {
+  const tabs = mTabsOpenedByExternalApplicationsInWindow.get(removeInfo.windowId);
+  if (tabs)
+    tabs.delete(tabId);
 });
 
-browser.tabs.onDetached.addListener((_tabId, detachInfo) => {
-  reserveToUpdateActiveTabMarker(detachInfo.oldWindowId);
+browser.tabs.onDetached.addListener((tabId, detachInfo) => {
+  const tabs = mTabsOpenedByExternalApplicationsInWindow.get(detachInfo.oldWindowId);
+  if (tabs)
+    tabs.delete(tabId);
+});
+
+browser.windows.onFocusChanged.addListener(windowId => {
+  mLastFocusedWindowId = windowId;
 });
 
 browser.windows.onRemoved.addListener(windowId => {
-  stylesForWindow.delete(windowId);
+  mTabsOpenedByExternalApplicationsInWindow.delete(windowId)
 });
