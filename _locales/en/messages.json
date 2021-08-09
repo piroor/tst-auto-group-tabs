@@ -4,7 +4,7 @@
 
   "defaultGroupTabTitle_byExternalApps": { "message": "Tabs from External Apps" },
 
-  "config_groupTabTitle_caption": { "message": "Default Title of Group Tab" },
+  "config_groupTabTitle_caption": { "message": "Default Title of Group Tabs" },
   "config_groupTabTitle_byExternalApps_label_before": { "message": "For tabs opened by external applications:" },
   "config_groupTabTitle_byExternalApps_label_after":  { "message": "\u200b" }
 }
