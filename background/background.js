@@ -76,8 +76,9 @@ browser.tabs.onCreated.addListener(async tab => {
   tabs.clear();
 
   if (!groupTab) {
+    const title = configs.groupTabTitle_byExternalApps || browser.i18n.getMessage('defaultGroupTabTitle_byExternalApps');
     groupTab = await browser.tabs.create({
-      url:    `ext+treestyletab:group?title=${escape('Tabs from External Application')}`,
+      url:    `ext+treestyletab:group?title=${encodeURIComponent(title)}`,
       active: false,
     });
     mGroupTabIdInWindow.set(tab.windowId, groupTab.id);

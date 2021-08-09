@@ -1,4 +1,10 @@
 {
   "extensionName": { "message": "TST Auto Group Tabs" },
-  "extensionDescription": { "message": "Tree Style Tabと連携し、新しく開かれたタブを様々な条件でグループ化します。" }
+  "extensionDescription": { "message": "Tree Style Tabと連携し、新しく開かれたタブを様々な条件でグループ化します。" },
+
+  "defaultGroupTabTitle_byExternalApps": { "message": "他のアプリから開かれたタブ" },
+
+  "config_groupTabTitle_caption": { "message": "グループ化用のタブの規定のタイトル" },
+  "config_groupTabTitle_byExternalApps_label_before": { "message": "外部アプリケーションから開かれたタブ用:" },
+  "config_groupTabTitle_byExternalApps_label_after":  { "message": "\u200b" }
 }
