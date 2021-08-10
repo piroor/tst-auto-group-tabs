@@ -166,7 +166,10 @@ browser.tabs.onCreated.addListener(async tab => { try {
       child:       tab.id,
       insertAfter: lastReferenceTab.id, 
     });
-    lastReferenceTab = tab;
+    lastReferenceTab = await browser.runtime.sendMessage(TST_ID, {
+      type: 'get-tree',
+      tab:  `lastDescendant-of-${tab.id}`,
+    }) || tab;
   }
 } catch(error) { console.log(error); }});
 
