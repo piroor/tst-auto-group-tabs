@@ -56,7 +56,7 @@ const mTabUniqueIdById = new Map();
 const mTabIdByUniqueId = new Map();
 const mTabIdsInWindow  = new Map();
 
-const mTabsOpenedByExternalApplicationsInWindow = new Map();
+const mToBeGroupedTabsInWindow = new Map();
 const mGroupTabIdInWindow = new Map();
 
 async function uniqueIdToId(uniqueId, windowId) {
@@ -97,9 +97,12 @@ function untrackTab(tabId, windowId) {
     mTabIdByUniqueId.delete(uniqueId);
   mTabUniqueIdById.delete(tabId);
 
-  const tabsOpenedByExternalApps = mTabsOpenedByExternalApplicationsInWindow.get(windowId);
-  if (tabsOpenedByExternalApps)
-    tabsOpenedByExternalApps.delete(tabId);
+  const toBeGroupedTabs = mToBeGroupedTabsInWindow.get(windowId);
+  if (toBeGroupedTabs) {
+    for (const tabs of toBeGroupedTabs.values()) {
+      tabs.delete(tabId);
+    }
+  }
 }
 
 browser.tabs.query({}).then(tabs => {
@@ -117,49 +120,13 @@ browser.tabs.query({}).then(tabs => {
 });
 
 
-browser.tabs.onCreated.addListener(async tab => { try {
-  trackTab(tab);
-
-  const tabs = mTabsOpenedByExternalApplicationsInWindow.get(tab.windowId) || new Map();
-  if (mLastFocusedWindowId == browser.windows.WINDOW_ID_NONE) {
-    tabs.set(tab.id, tab);
-    mTabsOpenedByExternalApplicationsInWindow.set(tab.windowId, tabs);
-  }
-
-  const groupTabId = mGroupTabIdInWindow.get(tab.windowId) ||
-    await uniqueIdToId(await browser.sessions.getWindowValue(tab.windowId, 'groupTabId_byExternalApps'), tab.windowId);
-  if (tab.id == groupTabId)
-    return;
-
-  let groupTab = groupTabId && await browser.tabs.get(groupTabId).catch(_error => null);
-  if (groupTab && groupTab.windowId != tab.windowId) {
-    mGroupTabIdInWindow.delete(tab.windowId);
-    groupTab = null;
-  }
-
-  if (!groupTab && tabs.size < 2)
-    return;
-
-  const tabsToBeGrouped = Array.from(tabs.values());
-  tabs.clear();
-
-  if (!groupTab) {
-    const title = configs.groupTabTitle_byExternalApps || browser.i18n.getMessage('defaultGroupTabTitle_byExternalApps');
-    groupTab = await browser.tabs.create({
-      url:    `ext+treestyletab:group?title=${encodeURIComponent(title)}&temporary=true`,
-      active: false,
-    });
-    mGroupTabIdInWindow.set(tab.windowId, groupTab.id);
-    browser.sessions.setWindowValue(tab.windowId, 'groupTabId_byExternalApps', mTabUniqueIdById.get(groupTab.id));
-    tabs.delete(groupTab.id);
-  }
-
+async function attachTabsToGroup(tabs, groupTab) {
   const lastDescendant = await browser.runtime.sendMessage(TST_ID, {
     type: 'get-tree',
     tab:  `lastDescendant-of-${groupTab.id}`,
   });
   let lastReferenceTab = lastDescendant || groupTab;
-  for (const tab of tabsToBeGrouped) {
+  for (const tab of tabs) {
     await browser.runtime.sendMessage(TST_ID, {
       type:        'attach',
       parent:      groupTab.id,
@@ -171,6 +138,69 @@ browser.tabs.onCreated.addListener(async tab => { try {
       tab:  `lastDescendant-of-${tab.id}`,
     }) || tab;
   }
+}
+
+async function getGroupTabForContext(context, windowId) {
+  const groupTabIds = mGroupTabIdInWindow.get(windowId) || new Map();
+
+  const groupTabId = groupTabIds.get(context) ||
+    await uniqueIdToId(await browser.sessions.getWindowValue(windowId, `groupTabId_${context}`), windowId);
+
+  let groupTab = groupTabId && await browser.tabs.get(groupTabId).catch(_error => null);
+  if (groupTab && groupTab.windowId != windowId) {
+    groupTabIds.delete(context);
+    groupTab = null;
+  }
+
+  mGroupTabIdInWindow.set(groupTabIds);
+
+  return groupTab;
+}
+
+async function prepareGroupTabForContext(context, windowId) {
+  const groupTabIds = mGroupTabIdInWindow.get(windowId) || new Map();
+
+  const title = configs[`groupTabTitle_${context}`] || browser.i18n.getMessage(`defaultGroupTabTitle_${context}`);
+  const groupTab = await browser.tabs.create({
+    url:    `ext+treestyletab:group?title=${encodeURIComponent(title)}&temporary=true`,
+    active: false,
+  });
+  browser.sessions.setWindowValue(windowId, `groupTabId_${context}`, mTabUniqueIdById.get(groupTab.id));
+
+  groupTabIds.set(context, groupTab.id);
+  mGroupTabIdInWindow.set(windowId, groupTabIds);
+  return groupTab;
+}
+
+
+async function processTabOpenedByExternalApp(tab) {
+  const context = 'byExternalApps';
+
+  const toBeGroupedTabs = mToBeGroupedTabsInWindow.get(tab.windowId) || new Map();
+  const toBeGroupedTabsByExternalApps = toBeGroupedTabs.get(context) || new Map();
+  if (mLastFocusedWindowId == browser.windows.WINDOW_ID_NONE) {
+    toBeGroupedTabsByExternalApps.set(tab.id, tab);
+    toBeGroupedTabs.set(context, toBeGroupedTabsByExternalApps);
+    mToBeGroupedTabsInWindow.set(tab.windowId, toBeGroupedTabs);
+  }
+
+  let groupTab = await getGroupTabForContext(context, tab.windowId);
+  if (!groupTab && toBeGroupedTabsByExternalApps.size < 2)
+    return;
+
+  const tabsToBeGrouped = Array.from(toBeGroupedTabsByExternalApps.values());
+  toBeGroupedTabsByExternalApps.clear();
+
+  if (!groupTab)
+    groupTab = await prepareGroupTabForContext('byExternalApps', tab.windowId);
+
+  await attachTabsToGroup(tabsToBeGrouped, groupTab);
+}
+
+
+browser.tabs.onCreated.addListener(async tab => { try {
+  trackTab(tab);
+  await processTabOpenedByExternalApp(tab);
 } catch(error) { console.log(error); }});
 
 browser.tabs.onRemoved.addListener((tabId, removeInfo) => {
@@ -194,7 +224,7 @@ browser.windows.onFocusChanged.addListener(windowId => {
 });
 
 browser.windows.onRemoved.addListener(windowId => {
-  mTabsOpenedByExternalApplicationsInWindow.delete(windowId)
+  mToBeGroupedTabsInWindow.delete(windowId)
   const tabIds = mTabIdsInWindow.get(windowId);
   if (tabIds) {
     for (const id of tabIds) {
