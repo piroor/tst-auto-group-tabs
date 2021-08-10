@@ -52,7 +52,7 @@ browser.runtime.onMessageExternal.addListener((message, sender) => {
 */
 
 
-const mTabUniqyeIdById = new Map();
+const mTabUniqueIdById = new Map();
 const mTabIdByUniqueId = new Map();
 const mTabIdsInWindow  = new Map();
 
@@ -75,7 +75,7 @@ async function uniqueIdToId(uniqueId, windowId) {
 function trackTab(tab) {
   const uniqueId = `${Date.now()}-${parseInt(Math.random() * 65000)}`
   browser.sessions.setTabValue(tab.id, 'uniqueId', uniqueId);
-  mTabUniqyeIdById.set(tab.id, uniqueId);
+  mTabUniqueIdById.set(tab.id, uniqueId);
   mTabIdByUniqueId.set(uniqueId, tab.id);
 
   const tabIds = mTabIdsInWindow.get(tab.windowId) || new Set();
@@ -88,10 +88,10 @@ function untrackTab(tabId, windowId) {
   if (tabIds)
     tabIds.delete(tabId);
 
-  const uniqueId = mTabUniqyeIdById.get(tabId);
+  const uniqueId = mTabUniqueIdById.get(tabId);
   if (uniqueId)
     mTabIdByUniqueId.delete(uniqueId);
-  mTabUniqyeIdById.delete(tabId);
+  mTabUniqueIdById.delete(tabId);
 
   const tabsOpenedByExternalApps = mTabsOpenedByExternalApplicationsInWindow.get(windowId);
   if (tabsOpenedByExternalApps)
@@ -132,7 +132,7 @@ browser.tabs.onCreated.addListener(async tab => { try {
       active: false,
     });
     mGroupTabIdInWindow.set(tab.windowId, groupTab.id);
-    browser.sessions.setWindowValue(tab.windowId, 'groupTabId_byExternalApps', mTabUniqyeIdById.get(groupTab.id));
+    browser.sessions.setWindowValue(tab.windowId, 'groupTabId_byExternalApps', mTabUniqueIdById.get(groupTab.id));
     tabs.delete(groupTab.id);
   }
 
