@@ -23,6 +23,7 @@ browser.windows.getAll().then(windows => {
   }
 });
 
+/*
 async function registerToTST() {
   try {
     await browser.runtime.sendMessage(TST_ID, {
@@ -48,6 +49,7 @@ browser.runtime.onMessageExternal.addListener((message, sender) => {
       break;
   }
 });
+*/
 
 const mTabUniqyeIdById = new Map();
 const mTabIdByUniqueId = new Map();
