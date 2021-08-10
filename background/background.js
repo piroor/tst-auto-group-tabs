@@ -63,6 +63,10 @@ async function uniqueIdToId(uniqueId, windowId) {
   if (!uniqueId)
     return null;
 
+  const id = mTabIdByUniqueId.get(uniqueId);
+  if (id)
+    return id;
+
   const tabs = await browser.tabs.query({ windowId });
   const uniqueIds = await Promise.all(tabs.map(tab => browser.sessions.getTabValue(tab.id, 'uniqueId')));
   const index = uniqueIds.indexOf(uniqueId);
@@ -97,6 +101,20 @@ function untrackTab(tabId, windowId) {
   if (tabsOpenedByExternalApps)
     tabsOpenedByExternalApps.delete(tabId);
 }
+
+browser.tabs.query({}).then(tabs => {
+  for (const tab of tabs) {
+    browser.sessions.getTabValue(tab.id, 'uniqueId').then(uniqueId => {
+      if (uniqueId) {
+        mTabUniqueIdById.set(tab.id, uniqueId);
+        mTabIdByUniqueId.set(uniqueId, tab.id);
+      }
+      else {
+        trackTab(tab);
+      }
+    });
+  }
+});
 
 
 browser.tabs.onCreated.addListener(async tab => { try {
