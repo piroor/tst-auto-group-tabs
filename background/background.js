@@ -49,10 +49,35 @@ browser.runtime.onMessageExternal.addListener((message, sender) => {
   }
 });
 
+const mTabUniqyeIdById = new Map();
+const mTabIdByUniqueId = new Map();
+const mTabIdsInWindow  = new Map();
+
+async function uniqueIdToId(uniqueId, windowId) {
+  if (!uniqueId)
+    return null;
+
+  const tabs = await browser.tabs.query({ windowId });
+  const uniqueIds = await Promise.all(tabs.map(tab => browser.sessions.getTabValue(tab.id, 'uniqueId')));
+  const index = uniqueIds.indexOf(uniqueId);
+  if (index < 0)
+    return null;
+
+  return tabs[index].id;
+}
+
 const mTabsOpenedByExternalApplicationsInWindow = new Map();
 const mGroupTabIdInWindow = new Map();
 
-browser.tabs.onCreated.addListener(async tab => {
+browser.tabs.onCreated.addListener(async tab => { try {
+  const uniqueId = `${Date.now()}-${parseInt(Math.random() * 65000)}`
+  browser.sessions.setTabValue(tab.id, 'uniqueId', uniqueId);
+  mTabUniqyeIdById.set(tab.id, uniqueId);
+  mTabIdByUniqueId.set(uniqueId, tab.id);
+  const tabIds = mTabIdsInWindow.get(tab.windowId) || new Set();
+  tabIds.add(tab.id);
+  mTabIdsInWindow.set(tab.windowId, tabIds)
+
   const tabs = mTabsOpenedByExternalApplicationsInWindow.get(tab.windowId) || new Map();
   if (mLastFocusedWindowId == browser.windows.WINDOW_ID_NONE) {
     tabs.set(tab.id, tab);
@@ -60,7 +85,7 @@ browser.tabs.onCreated.addListener(async tab => {
   }
 
   const groupTabId = mGroupTabIdInWindow.get(tab.windowId) ||
-    await browser.sessions.getWindowValue(tab.windowId, 'groupTabId_byExternalApps');
+    await uniqueIdToId(await browser.sessions.getWindowValue(tab.windowId, 'groupTabId_byExternalApps'), tab.windowId);
   if (tab.id == groupTabId)
     return;
 
@@ -83,7 +108,7 @@ browser.tabs.onCreated.addListener(async tab => {
       active: false,
     });
     mGroupTabIdInWindow.set(tab.windowId, groupTab.id);
-    browser.sessions.setWindowValue(tab.windowId, 'groupTabId_byExternalApps', groupTab.id);
+    browser.sessions.setWindowValue(tab.windowId, 'groupTabId_byExternalApps', mTabUniqyeIdById.get(groupTab.id));
     tabs.delete(groupTab.id);
   }
 
@@ -101,18 +126,37 @@ browser.tabs.onCreated.addListener(async tab => {
     });
     lastReferenceTab = tab;
   }
-});
+} catch(error) { console.log(error); }});
 
 browser.tabs.onRemoved.addListener((tabId, removeInfo) => {
+  const uniqueId = mTabUniqyeIdById.get(tabId);
+  if (uniqueId)
+    mTabIdByUniqueId.delete(uniqueId);
+  mTabUniqyeIdById.delete(tabId);
+
   const tabs = mTabsOpenedByExternalApplicationsInWindow.get(removeInfo.windowId);
   if (tabs)
     tabs.delete(tabId);
+
+  const tabIds = mTabIdsInWindow.get(removeInfo.windowId);
+  if (tabIds)
+    tabIds.delete(tabId);
+});
+
+browser.tabs.onAttached.addListener((tabId, attachInfo) => {
+  const tabIds = mTabIdsInWindow.get(attachInfo.newWindowId);
+  if (tabIds)
+    tabIds.add(tabId);
 });
 
 browser.tabs.onDetached.addListener((tabId, detachInfo) => {
   const tabs = mTabsOpenedByExternalApplicationsInWindow.get(detachInfo.oldWindowId);
   if (tabs)
     tabs.delete(tabId);
+
+  const tabIds = mTabIdsInWindow.get(detachInfo.oldWindowId);
+  if (tabIds)
+    tabIds.delete(tabId);
 });
 
 browser.windows.onFocusChanged.addListener(windowId => {
@@ -121,4 +165,14 @@ browser.windows.onFocusChanged.addListener(windowId => {
 
 browser.windows.onRemoved.addListener(windowId => {
   mTabsOpenedByExternalApplicationsInWindow.delete(windowId)
+  const tabIds = mTabIdsInWindow.get(windowId);
+  if (tabIds) {
+    for (const id of tabIds) {
+      const uniqueId = mTabUniqyeIdById.get(id);
+      if (uniqueId)
+        mTabIdByUniqueId.delete(uniqueId);
+      mTabUniqyeIdById.delete(id);
+    }
+    mTabIdsInWindow.delete(windowId);
+  }
 });
