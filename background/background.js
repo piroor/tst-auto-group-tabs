@@ -172,35 +172,35 @@ async function prepareGroupTabForContext(context, windowId) {
   return groupTab;
 }
 
-
-async function processTabOpenedByExternalApp(tab) {
-  const context = 'byExternalApps';
-
+function addToBeGroupedTab(tab, context) {
   const toBeGroupedTabs = mToBeGroupedTabsInWindow.get(tab.windowId) || new Map();
-  const toBeGroupedTabsByExternalApps = toBeGroupedTabs.get(context) || new Map();
-  if (mLastFocusedWindowId == browser.windows.WINDOW_ID_NONE) {
-    toBeGroupedTabsByExternalApps.set(tab.id, tab);
-    toBeGroupedTabs.set(context, toBeGroupedTabsByExternalApps);
-    mToBeGroupedTabsInWindow.set(tab.windowId, toBeGroupedTabs);
-  }
+  const toBeGroupedTabsOnContext = toBeGroupedTabs.get(context) || new Map();
+  toBeGroupedTabsOnContext.set(tab.id, tab);
+  toBeGroupedTabs.set(context, toBeGroupedTabsOnContext);
+  mToBeGroupedTabsInWindow.set(tab.windowId, toBeGroupedTabs);
+  return toBeGroupedTabsOnContext;
+}
 
-  let groupTab = await getGroupTabForContext(context, tab.windowId);
-  if (!groupTab && toBeGroupedTabsByExternalApps.size < 2)
+async function handleNewTab(tab, context) {
+  const toBeGroupedTabs = addToBeGroupedTab(tab, context);
+  const groupTab = await getGroupTabForContext(context, tab.windowId);
+  if (!groupTab && toBeGroupedTabs.size < 2)
     return;
 
-  const tabsToBeGrouped = Array.from(toBeGroupedTabsByExternalApps.values());
-  toBeGroupedTabsByExternalApps.clear();
+  const tabs = Array.from(toBeGroupedTabs.values());
+  toBeGroupedTabs.clear();
 
-  if (!groupTab)
-    groupTab = await prepareGroupTabForContext('byExternalApps', tab.windowId);
-
-  await attachTabsToGroup(tabsToBeGrouped, groupTab);
+  await attachTabsToGroup(
+    tabs,
+    groupTab || await prepareGroupTabForContext(context, tab.windowId)
+  );
 }
 
 
 browser.tabs.onCreated.addListener(async tab => { try {
   trackTab(tab);
-  await processTabOpenedByExternalApp(tab);
+  if (mLastFocusedWindowId == browser.windows.WINDOW_ID_NONE)
+    await handleNewTab(tab, 'byExternalApps');
 } catch(error) { console.log(error); }});
 
 browser.tabs.onRemoved.addListener((tabId, removeInfo) => {
