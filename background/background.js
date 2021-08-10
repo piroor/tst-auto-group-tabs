@@ -51,9 +51,13 @@ browser.runtime.onMessageExternal.addListener((message, sender) => {
 });
 */
 
+
 const mTabUniqyeIdById = new Map();
 const mTabIdByUniqueId = new Map();
 const mTabIdsInWindow  = new Map();
+
+const mTabsOpenedByExternalApplicationsInWindow = new Map();
+const mGroupTabIdInWindow = new Map();
 
 async function uniqueIdToId(uniqueId, windowId) {
   if (!uniqueId)
@@ -68,17 +72,35 @@ async function uniqueIdToId(uniqueId, windowId) {
   return tabs[index].id;
 }
 
-const mTabsOpenedByExternalApplicationsInWindow = new Map();
-const mGroupTabIdInWindow = new Map();
-
-browser.tabs.onCreated.addListener(async tab => { try {
+function trackTab(tab) {
   const uniqueId = `${Date.now()}-${parseInt(Math.random() * 65000)}`
   browser.sessions.setTabValue(tab.id, 'uniqueId', uniqueId);
   mTabUniqyeIdById.set(tab.id, uniqueId);
   mTabIdByUniqueId.set(uniqueId, tab.id);
+
   const tabIds = mTabIdsInWindow.get(tab.windowId) || new Set();
   tabIds.add(tab.id);
-  mTabIdsInWindow.set(tab.windowId, tabIds)
+  mTabIdsInWindow.set(tab.windowId, tabIds);
+}
+
+function untrackTab(tabId, windowId) {
+  const tabIds = mTabIdsInWindow.get(windowId);
+  if (tabIds)
+    tabIds.delete(tabId);
+
+  const uniqueId = mTabUniqyeIdById.get(tabId);
+  if (uniqueId)
+    mTabIdByUniqueId.delete(uniqueId);
+  mTabUniqyeIdById.delete(tabId);
+
+  const tabsOpenedByExternalApps = mTabsOpenedByExternalApplicationsInWindow.get(windowId);
+  if (tabsOpenedByExternalApps)
+    tabsOpenedByExternalApps.delete(tabId);
+}
+
+
+browser.tabs.onCreated.addListener(async tab => { try {
+  trackTab(tab);
 
   const tabs = mTabsOpenedByExternalApplicationsInWindow.get(tab.windowId) || new Map();
   if (mLastFocusedWindowId == browser.windows.WINDOW_ID_NONE) {
@@ -131,18 +153,7 @@ browser.tabs.onCreated.addListener(async tab => { try {
 } catch(error) { console.log(error); }});
 
 browser.tabs.onRemoved.addListener((tabId, removeInfo) => {
-  const uniqueId = mTabUniqyeIdById.get(tabId);
-  if (uniqueId)
-    mTabIdByUniqueId.delete(uniqueId);
-  mTabUniqyeIdById.delete(tabId);
-
-  const tabs = mTabsOpenedByExternalApplicationsInWindow.get(removeInfo.windowId);
-  if (tabs)
-    tabs.delete(tabId);
-
-  const tabIds = mTabIdsInWindow.get(removeInfo.windowId);
-  if (tabIds)
-    tabIds.delete(tabId);
+  untrackTab(tabId, removeInfo.windowId);
 });
 
 browser.tabs.onAttached.addListener((tabId, attachInfo) => {
@@ -152,10 +163,6 @@ browser.tabs.onAttached.addListener((tabId, attachInfo) => {
 });
 
 browser.tabs.onDetached.addListener((tabId, detachInfo) => {
-  const tabs = mTabsOpenedByExternalApplicationsInWindow.get(detachInfo.oldWindowId);
-  if (tabs)
-    tabs.delete(tabId);
-
   const tabIds = mTabIdsInWindow.get(detachInfo.oldWindowId);
   if (tabIds)
     tabIds.delete(tabId);
@@ -170,10 +177,7 @@ browser.windows.onRemoved.addListener(windowId => {
   const tabIds = mTabIdsInWindow.get(windowId);
   if (tabIds) {
     for (const id of tabIds) {
-      const uniqueId = mTabUniqyeIdById.get(id);
-      if (uniqueId)
-        mTabIdByUniqueId.delete(uniqueId);
-      mTabUniqyeIdById.delete(id);
+      untrackTab(id, windowId);
     }
     mTabIdsInWindow.delete(windowId);
   }
