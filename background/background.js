@@ -193,11 +193,16 @@ async function handleNewTab(tab, context) {
 }
 
 
-browser.tabs.onCreated.addListener(async tab => { try {
-  trackTab(tab);
-  if (mLastFocusedWindowId == browser.windows.WINDOW_ID_NONE)
-    await handleNewTab(tab, 'byExternalApps');
-} catch(error) { console.log(error); }});
+browser.tabs.onCreated.addListener(async tab => {
+  try {
+    trackTab(tab);
+    if (mLastFocusedWindowId == browser.windows.WINDOW_ID_NONE)
+      await handleNewTab(tab, 'byExternalApps');
+  }
+  catch(error) {
+    console.log(error);
+  }
+});
 
 browser.tabs.onRemoved.addListener((tabId, removeInfo) => {
   untrackTab(tabId, removeInfo.windowId);
