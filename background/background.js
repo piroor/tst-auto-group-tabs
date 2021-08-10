@@ -172,23 +172,19 @@ async function prepareGroupTabForContext(context, windowId) {
   return groupTab;
 }
 
-function addToBeGroupedTab(tab, context) {
-  const toBeGroupedTabs = mToBeGroupedTabsInWindow.get(tab.windowId) || new Map();
-  const toBeGroupedTabsOnContext = toBeGroupedTabs.get(context) || new Map();
-  toBeGroupedTabsOnContext.set(tab.id, tab);
-  toBeGroupedTabs.set(context, toBeGroupedTabsOnContext);
-  mToBeGroupedTabsInWindow.set(tab.windowId, toBeGroupedTabs);
-  return toBeGroupedTabsOnContext;
-}
-
 async function handleNewTab(tab, context) {
-  const toBeGroupedTabs = addToBeGroupedTab(tab, context);
+  const toBeGroupedTabs = mToBeGroupedTabsInWindow.get(tab.windowId) || new Map();
+  const toBeGroupedTabsForContext = toBeGroupedTabs.get(context) || new Map();
+  toBeGroupedTabsForContext.set(tab.id, tab);
+  toBeGroupedTabs.set(context, toBeGroupedTabsForContext);
+  mToBeGroupedTabsInWindow.set(tab.windowId, toBeGroupedTabs);
+
   const groupTab = await getGroupTabForContext(context, tab.windowId);
-  if (!groupTab && toBeGroupedTabs.size < 2)
+  if (!groupTab && toBeGroupedTabsForContext.size < 2)
     return;
 
-  const tabs = Array.from(toBeGroupedTabs.values());
-  toBeGroupedTabs.clear();
+  const tabs = Array.from(toBeGroupedTabsForContext.values());
+  toBeGroupedTabsForContext.clear();
 
   await attachTabsToGroup(
     tabs,
