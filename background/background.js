@@ -6,10 +6,9 @@
 'use strict';
 
 import {
-  configs
+  configs,
+  callTSTAPI,
 } from '/common/common.js';
-
-const TST_ID = 'treestyletab@piro.sakura.ne.jp';
 
 let mLastFocusedWindowId = browser.windows.WINDOW_ID_NONE;
 
@@ -26,7 +25,7 @@ browser.windows.getAll().then(windows => {
 /*
 async function registerToTST() {
   try {
-    await browser.runtime.sendMessage(TST_ID, {
+    await callTSTAPI({
       type: 'register-self' ,
       name: browser.i18n.getMessage('extensionName'),
       //icons: browser.runtime.getManifest().icons,
@@ -41,6 +40,7 @@ configs.$loaded.then(registerToTST);
 browser.runtime.onMessageExternal.addListener((message, sender) => {
   switch (sender.id) {
     case TST_ID:
+    case WS_ID:
       switch (message.type) {
         case 'ready':
           registerToTST();
@@ -121,19 +121,19 @@ browser.tabs.query({}).then(tabs => {
 
 
 async function attachTabsToGroup(tabs, groupTab) {
-  const lastDescendant = await browser.runtime.sendMessage(TST_ID, {
+  const lastDescendant = await callTSTAPI({
     type: 'get-tree',
     tab:  `lastDescendant-of-${groupTab.id}`,
   });
   let lastReferenceTab = lastDescendant || groupTab;
   for (const tab of tabs) {
-    await browser.runtime.sendMessage(TST_ID, {
+    await callTSTAPI({
       type:        'attach',
       parent:      groupTab.id,
       child:       tab.id,
       insertAfter: lastReferenceTab.id, 
     });
-    lastReferenceTab = await browser.runtime.sendMessage(TST_ID, {
+    lastReferenceTab = await callTSTAPI({
       type: 'get-tree',
       tab:  `lastDescendant-of-${tab.id}`,
     }) || tab;
